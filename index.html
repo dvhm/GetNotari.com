@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Notari — Write with Your Ear</title>
+  <meta name="description" content="A word processor for writers who care about sound. Rhymes, synonyms, assonance, and more in a live sidebar — powered by a built-in phonetic database, no internet required." />
+  <link rel="icon" href="notari-icon.ico" />
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            bg:       '#121212',
+            surface:  '#1E1E1E',
+            elevated: '#2A2A2A',
+            border:   'rgba(255,255,255,0.12)',
+            cyan:     '#4FC3F7',
+            'cyan-light': '#81D4FA',
+            amber:    '#FFC107',
+            purple:   '#C084FC',
+            'purple-dark': '#9333EA',
+            success:  '#4CAF50',
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+          },
+          backgroundImage: {
+            'hero-glow': 'radial-gradient(ellipse 80% 60% at 50% -10%, rgba(147,51,234,0.45) 0%, transparent 70%)',
+            'feature-glow': 'radial-gradient(ellipse 60% 40% at 80% 50%, rgba(79,195,247,0.08) 0%, transparent 60%)',
+          },
+          animation: {
+            'fade-up': 'fadeUp 0.6s ease-out forwards',
+            'float':   'float 6s ease-in-out infinite',
+          },
+          keyframes: {
+            fadeUp: {
+              '0%':   { opacity: '0', transform: 'translateY(24px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' },
+            },
+            float: {
+              '0%, 100%': { transform: 'translateY(0px)' },
+              '50%':      { transform: 'translateY(-10px)' },
+            },
+          },
+        },
+      },
+    };
+  </script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;0,14..32,900;1,14..32,300;1,14..32,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <style>
+    body { background-color: #121212; color: #fff; }
+
+    /* Subtle noise texture overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    * { position: relative; z-index: 1; }
+
+    .glass {
+      background: rgba(30, 30, 30, 0.7);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .glow-cyan  { box-shadow: 0 0 40px rgba(79, 195, 247, 0.15); }
+    .glow-purple{ box-shadow: 0 0 60px rgba(192, 132, 252, 0.2); }
+    .text-glow-cyan { text-shadow: 0 0 30px rgba(79, 195, 247, 0.4); }
+
+    /* App window chrome */
+    .app-window {
+      background: #1A1A1A;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.1);
+      box-shadow:
+        0 0 0 1px rgba(0,0,0,0.5),
+        0 32px 80px rgba(0,0,0,0.7),
+        0 0 100px rgba(147,51,234,0.2);
+    }
+
+    .app-titlebar {
+      background: #161616;
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+      border-radius: 10px 10px 0 0;
+      padding: 0 12px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .dot { width: 12px; height: 12px; border-radius: 50%; }
+
+    .sidebar-item {
+      padding: 3px 10px;
+      font-size: 12px;
+      color: rgba(255,255,255,0.85);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-radius: 4px;
+      transition: background 0.15s;
+    }
+
+    .sidebar-item:hover { background: rgba(255,255,255,0.06); }
+
+    .sidebar-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      color: rgba(255,255,255,0.4);
+      text-transform: uppercase;
+      padding: 8px 10px 4px;
+    }
+
+    .pill {
+      background: rgba(79, 195, 247, 0.12);
+      color: #4FC3F7;
+      border: 1px solid rgba(79, 195, 247, 0.2);
+      border-radius: 999px;
+      font-size: 10px;
+      padding: 2px 8px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .feature-card {
+      background: #1E1E1E;
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 12px;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .feature-card:hover {
+      border-color: rgba(79,195,247,0.25);
+      transform: translateY(-2px);
+    }
+
+    .section-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #4FC3F7;
+    }
+
+    /* Gradient text */
+    .gradient-text {
+      background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.7) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .gradient-text-cyan {
+      background: linear-gradient(135deg, #81D4FA 0%, #4FC3F7 50%, #C084FC 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    /* Rhyme scheme letters */
+    .rhyme-letter {
+      font-size: 9px;
+      font-weight: 700;
+      padding: 1px 4px;
+      border-radius: 3px;
+      margin-left: 6px;
+      color: rgba(255,255,255,0.55);
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 99px; }
+  </style>
+</head>
+
+<body class="font-sans antialiased overflow-x-hidden">
+
+  <!-- ───────────────────────── NAV ───────────────────────── -->
+  <header class="fixed top-0 inset-x-0 z-50 glass border-b border-white/[0.06]">
+    <nav class="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
+      <!-- Logo -->
+      <a href="#" class="flex items-center gap-2.5 group">
+        <img src="notari-icon.ico" class="w-8 h-8 rounded-lg" alt="Notari" />
+        <span class="font-semibold text-white/90 tracking-tight">Notari</span>
+      </a>
+
+      <!-- Links -->
+      <div class="hidden md:flex items-center gap-8 text-sm text-white/50 font-medium">
+        <a href="#features" class="hover:text-white transition-colors">Features</a>
+        <a href="#phonetic"  class="hover:text-white transition-colors">Phonetics</a>
+        <a href="#semantic"  class="hover:text-white transition-colors">Semantics</a>
+      </div>
+
+      <!-- CTA -->
+      <a href="https://github.com/dvhm/notari/releases/latest/download/Notari-Setup.exe"
+         class="hidden md:flex items-center gap-2 bg-cyan text-bg text-sm font-semibold px-4 py-2 rounded-lg hover:bg-cyan-light transition-colors">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M8 1a.75.75 0 0 1 .75.75v6.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06L7.25 8.44V1.75A.75.75 0 0 1 8 1ZM1.5 14.25a.75.75 0 0 1 .75-.75h11.5a.75.75 0 0 1 0 1.5H2.25a.75.75 0 0 1-.75-.75Z"/>
+        </svg>
+        Download
+      </a>
+    </nav>
+  </header>
+
+  <!-- ───────────────────────── HERO ───────────────────────── -->
+  <section class="relative pt-32 pb-20 overflow-hidden">
+    <!-- Purple glow -->
+    <div class="absolute inset-0 bg-hero-glow pointer-events-none"></div>
+    <!-- Soft purple radial -->
+    <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[500px] rounded-full pointer-events-none"
+         style="background: radial-gradient(ellipse, rgba(124,58,237,0.3) 0%, transparent 70%); filter: blur(60px);"></div>
+
+    <div class="max-w-6xl mx-auto px-6">
+      <div class="text-center mb-16">
+        <div class="inline-flex items-center gap-2 glass rounded-full px-4 py-1.5 text-xs text-white/50 mb-8 font-medium">
+          <span class="w-1.5 h-1.5 rounded-full bg-success animate-pulse"></span>
+          Windows 10+ · Offline · Free &amp; Open Source
+        </div>
+
+        <h1 class="text-5xl md:text-7xl font-black tracking-tight leading-none mb-6">
+          <span class="gradient-text">A word processor</span><br/>
+          <span class="gradient-text-cyan">for writers who listen.</span>
+        </h1>
+
+        <p class="text-lg md:text-xl text-white/50 max-w-2xl mx-auto leading-relaxed mb-10">
+          Notari keeps a live sidebar open as you write — rhymes, synonyms, assonance,
+          alliteration, and more — all from a built-in phonetic database.
+          No internet, no account, just the words.
+        </p>
+
+          <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <a href="https://github.com/dvhm/notari/releases/latest/download/Notari-Setup.exe"
+               class="inline-flex items-center gap-2.5 bg-cyan text-bg font-bold px-7 py-3.5 rounded-xl text-sm hover:bg-cyan-light transition-all glow-cyan">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M8 1a.75.75 0 0 1 .75.75v6.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06L7.25 8.44V1.75A.75.75 0 0 1 8 1ZM1.5 14.25a.75.75 0 0 1 .75-.75h11.5a.75.75 0 0 1 0 1.5H2.25a.75.75 0 0 1-.75-.75Z"/>
+              </svg>
+              Download for Windows
+            </a>
+            <a href="https://github.com/dvhm/notari" target="_blank"
+               class="inline-flex items-center gap-2.5 glass text-white/70 font-medium px-7 py-3.5 rounded-xl text-sm hover:text-white hover:border-white/20 transition-all border border-white/10">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+              </svg>
+              View on GitHub
+            </a>
+          </div>
+
+          <p class="text-white/25 text-sm mt-6 italic">No AI. No autocomplete. Just you and the right tools to find the words yourself.</p>
+      </div>
+
+      <!-- App screenshot -->
+      <div class="relative max-w-5xl mx-auto animate-float">
+        <div class="app-window overflow-hidden">
+          <!-- Title bar -->
+          <div class="app-titlebar">
+            <div class="dot bg-red-500/80"></div>
+            <div class="dot bg-amber/80"></div>
+            <div class="dot bg-success/80"></div>
+            <div class="flex-1 flex justify-center">
+              <span class="text-white/40 text-xs font-medium">JHARIAH - FIRE4FUN.rtf &nbsp;·&nbsp; 169 words &nbsp;·&nbsp; 30 lines</span>
+            </div>
+            <span class="text-white/30 text-xs">Focus: "like"</span>
+          </div>
+
+          <!-- App body -->
+          <div class="flex" style="height: 420px;">
+            <!-- Editor pane -->
+            <div class="flex-1 overflow-hidden relative" style="background: #181818;">
+              <!-- Toolbar -->
+              <div class="flex items-center gap-1.5 px-3 py-2 border-b border-white/[0.06]" style="background:#161616;">
+                <button class="w-7 h-7 rounded flex items-center justify-center text-white/60 hover:bg-white/[0.06] text-xs font-bold transition-colors">B</button>
+                <button class="w-7 h-7 rounded flex items-center justify-center text-white/60 hover:bg-white/[0.06] text-xs italic transition-colors">I</button>
+                <button class="w-7 h-7 rounded flex items-center justify-center text-white/60 hover:bg-white/[0.06] text-xs underline transition-colors">U</button>
+                <div class="w-px h-4 bg-white/10 mx-1"></div>
+                <button class="w-7 h-7 rounded flex items-center justify-center text-white/60 hover:bg-white/[0.06] transition-colors">
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><rect x="1" y="2" width="10" height="1.5" rx="0.75"/><rect x="1" y="5.25" width="7" height="1.5" rx="0.75"/><rect x="1" y="8.5" width="10" height="1.5" rx="0.75"/></svg>
+                </button>
+                <div class="w-px h-4 bg-white/10 mx-1"></div>
+                <!-- Highlight toggle (active) -->
+                <button class="w-7 h-7 rounded flex items-center justify-center text-xs font-bold transition-colors"
+                        style="background: rgba(192,132,252,0.25); color: #C084FC; border: 1px solid rgba(192,132,252,0.3);">∀</button>
+                <button class="w-7 h-7 rounded flex items-center justify-center text-white/40 hover:bg-white/[0.06] text-xs transition-colors">#</button>
+              </div>
+
+              <!-- Paper -->
+              <div class="overflow-hidden h-full flex justify-center pt-6 pb-4 px-6">
+                <div style="width: 100%; max-width: 520px; font-size: 13px; color: rgba(255,255,255,0.9); line-height: 1.9; font-family: Georgia, serif;">
+                  <div style="color: rgba(255,255,255,0.35); margin-bottom:8px; font-family: Inter, sans-serif; font-size:11px; font-style:italic;">[Intro]</div>
+                  <div class="flex items-baseline gap-2">
+                    <span style="color:rgba(255,255,255,0.2);font-size:10px;font-family:mono;width:16px;text-align:right;flex-shrink:0;">6</span>
+                    <span>Sweet relief <span style="color:#C084FC;text-decoration:underline;text-decoration-color:rgba(192,132,252,0.4);">like</span> concrete <span class="rhyme-letter" style="background:rgba(79,195,247,0.12);color:#4FC3F7;">A</span></span>
+                  </div>
+                  <div class="flex items-baseline gap-2">
+                    <span style="color:rgba(255,255,255,0.2);font-size:10px;font-family:mono;width:16px;text-align:right;flex-shrink:0;">6</span>
+                    <span>It lives under my dreams <span class="rhyme-letter" style="background:rgba(255,193,7,0.12);color:#FFC107;">B</span></span>
+                  </div>
+                  <div class="flex items-baseline gap-2">
+                    <span style="color:rgba(255,255,255,0.2);font-size:10px;font-family:mono;width:16px;text-align:right;flex-shrink:0;">6</span>
+                    <span>Has more to lose than me <span class="rhyme-letter" style="background:rgba(255,193,7,0.12);color:#FFC107;">B</span></span>
+                  </div>
+
+                  <div style="color: rgba(255,255,255,0.35); margin: 12px 0 8px; font-family: Inter, sans-serif; font-size:11px; font-style:italic;">[Verse 1]</div>
+                  <div class="flex items-baseline gap-2">
+                    <span style="color:rgba(255,255,255,0.2);font-size:10px;font-family:mono;width:16px;text-align:right;flex-shrink:0;">16</span>
+                    <span>I can never see it any closer, temple full of vultures <span class="rhyme-letter" style="background:rgba(79,195,247,0.12);color:#4FC3F7;">A</span></span>
+                  </div>
+                  <div class="flex items-baseline gap-2">
+                    <span style="color:rgba(255,255,255,0.2);font-size:10px;font-family:mono;width:16px;text-align:right;flex-shrink:0;">12</span>
+                    <span>Circling my brain <span style="color:#C084FC;text-decoration:underline;text-decoration-color:rgba(192,132,252,0.4);">like</span> I left it to the worms <span class="rhyme-letter" style="background:rgba(255,193,7,0.12);color:#FFC107;">B</span></span>
+                  </div>
+                  <div class="flex items-baseline gap-2">
+                    <span style="color:rgba(255,255,255,0.2);font-size:10px;font-family:mono;width:16px;text-align:right;flex-shrink:0;">14</span>
+                    <span>Scary vicious unrelenting birds, twisting up my words <span class="rhyme-letter" style="background:rgba(255,193,7,0.12);color:#FFC107;">B</span></span>
+                  </div>
+                  <div class="flex items-baseline gap-2">
+                    <span style="color:rgba(255,255,255,0.2);font-size:10px;font-family:mono;width:16px;text-align:right;flex-shrink:0;">7</span>
+                    <span>I carefully scan my eyes <span class="rhyme-letter" style="background:rgba(192,132,252,0.12);color:#C084FC;">C</span></span>
+                  </div>
+                  <div class="flex items-baseline gap-2">
+                    <span style="color:rgba(255,255,255,0.2);font-size:10px;font-family:mono;width:16px;text-align:right;flex-shrink:0;">14</span>
+                    <span>For something that I might've missed the prior thousand times <span class="rhyme-letter" style="background:rgba(192,132,252,0.12);color:#C084FC;">C</span></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Sidebar -->
+            <div class="w-52 flex-shrink-0 border-l border-white/[0.07] flex flex-col overflow-hidden" style="background:#1A1A1A;">
+              <!-- Word info -->
+              <div class="px-3 pt-3 pb-2 border-b border-white/[0.07]">
+                <div class="text-white font-semibold text-sm mb-0.5">like</div>
+                <div class="text-white/40 text-xs">1 syl · 1</div>
+                <div class="font-mono text-xs mt-1" style="color: #4FC3F7; letter-spacing: 0.05em;">L  AY1  K</div>
+              </div>
+
+              <!-- Phonetic section -->
+              <div class="px-3 py-1.5 border-b border-white/[0.07]">
+                <div class="sidebar-label">Phonetic</div>
+                <div class="sidebar-item justify-between cursor-pointer">
+                  <span>Rhymes</span>
+                  <span style="color:#4FC3F7;font-size:10px;">25</span>
+                </div>
+                <div class="sidebar-item justify-between cursor-pointer">
+                  <span>Multisyllabic</span>
+                  <span style="color:#4FC3F7;font-size:10px;">25</span>
+                </div>
+                <div class="sidebar-item justify-between cursor-pointer">
+                  <span>Assonance</span>
+                  <span style="color:#4FC3F7;font-size:10px;">25</span>
+                </div>
+                <div class="sidebar-item justify-between cursor-pointer">
+                  <span>Alliteration</span>
+                  <span style="color:#4FC3F7;font-size:10px;">25</span>
+                </div>
+              </div>
+
+              <!-- Semantic section -->
+              <div class="px-3 py-1.5 overflow-y-auto flex-1">
+                <div class="sidebar-label">Semantic</div>
+                <div class="sidebar-item justify-between cursor-pointer font-medium" style="color:rgba(255,255,255,0.9);">
+                  <span>Synonyms</span>
+                  <span style="color:#4FC3F7;font-size:10px;">8</span>
+                </div>
+                <!-- Synonym sub-groups -->
+                <div style="padding-left:8px;">
+                  <div class="sidebar-item text-xs" style="color:rgba(255,255,255,0.5); padding: 2px 10px;">Nouns (1)</div>
+                  <div class="sidebar-item text-xs" style="color:rgba(255,255,255,0.5); padding: 2px 10px;">Verbs (2)</div>
+                  <div class="sidebar-item text-xs" style="color:rgba(255,255,255,0.5); padding: 2px 10px;">Adjectives (3)</div>
+                  <div class="sidebar-item text-xs" style="color:rgba(255,255,255,0.5); padding: 2px 10px;">Adj. Satellite (2)</div>
+                </div>
+                <div class="sidebar-item justify-between cursor-pointer">
+                  <span>Antonyms</span>
+                  <span style="color:#4FC3F7;font-size:10px;">2</span>
+                </div>
+                <div class="sidebar-item justify-between cursor-pointer">
+                  <span>Hypernyms</span>
+                  <span style="color:#4FC3F7;font-size:10px;">14</span>
+                </div>
+                <div class="sidebar-item justify-between cursor-pointer">
+                  <span>Hyponyms</span>
+                  <span style="color:#4FC3F7;font-size:10px;">5</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Status bar -->
+          <div class="flex justify-between items-center px-4 py-1.5 border-t border-white/[0.06]"
+               style="background:#161616; font-size:11px; color:rgba(255,255,255,0.3);">
+            <span>Ready</span>
+            <span>Page 1 &nbsp;·&nbsp; 120%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────────────── PHONETIC FEATURES ───────────────────────── -->
+  <section id="phonetic" class="py-24">
+    <div class="max-w-6xl mx-auto px-6">
+      <div class="text-center mb-16">
+        <div class="section-label mb-3">Phonetic Tools</div>
+        <h2 class="text-4xl md:text-5xl font-black tracking-tight gradient-text mb-4">
+          What does it sound like?
+        </h2>
+        <p class="text-white/40 text-lg max-w-xl mx-auto">
+          Results are matched on actual phonetics, not just spelling — so "night" rhymes with "ignite", and "phone" alliterates with "fine".
+        </p>
+      </div>
+
+      <div id="features" class="grid md:grid-cols-2 gap-6">
+
+        <!-- Rhymes -->
+        <div class="feature-card p-6">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-9 h-9 rounded-lg flex items-center justify-center text-lg"
+                 style="background: rgba(79,195,247,0.1); border: 1px solid rgba(79,195,247,0.2);">🎵</div>
+            <div>
+              <div class="font-semibold text-white">Rhymes</div>
+              <div class="text-xs text-white/40">Perfect &amp; near rhymes</div>
+            </div>
+          </div>
+          <p class="text-white/55 text-sm leading-relaxed mb-4">
+            Matches words that share the same vowel-and-consonant ending — the stressed vowel through the coda. Both perfect rhymes and near rhymes, sorted by how common the word is.
+          </p>
+          <!-- Mini result -->
+          <div class="rounded-lg overflow-hidden" style="background:#252525; border: 1px solid rgba(255,255,255,0.06);">
+            <div class="flex justify-between px-3 py-1.5 text-xs" style="color:rgba(255,255,255,0.3); background:#202020; border-bottom:1px solid rgba(255,255,255,0.06);">
+              <span>Rhymes for <span style="color:#4FC3F7;">"night"</span></span>
+              <span>25 results</span>
+            </div>
+            <div style="padding: 6px 0;">
+              <div class="sidebar-item"><span>light</span><span style="color:rgba(255,255,255,0.25);font-size:10px;font-family:mono;">1 syl</span></div>
+              <div class="sidebar-item"><span>write</span><span style="color:rgba(255,255,255,0.25);font-size:10px;font-family:mono;">1 syl</span></div>
+              <div class="sidebar-item"><span>bright</span><span style="color:rgba(255,255,255,0.25);font-size:10px;font-family:mono;">1 syl</span></div>
+              <div class="sidebar-item" style="color:rgba(255,255,255,0.4);"><span>ignite</span><span style="color:rgba(255,255,255,0.2);font-size:10px;font-family:mono;">2 syl</span></div>
+              <div class="sidebar-item" style="color:rgba(255,255,255,0.4);"><span>despite</span><span style="color:rgba(255,255,255,0.2);font-size:10px;font-family:mono;">2 syl</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Assonance -->
+        <div class="feature-card p-6">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-9 h-9 rounded-lg flex items-center justify-center text-lg"
+                 style="background: rgba(192,132,252,0.1); border: 1px solid rgba(192,132,252,0.2);">〰</div>
+            <div>
+              <div class="font-semibold text-white">Assonance</div>
+              <div class="text-xs text-white/40">Matching vowel sounds</div>
+            </div>
+          </div>
+          <p class="text-white/55 text-sm leading-relaxed mb-4">
+            Words that share the same stressed vowel sound, regardless of how they end. It's a subtler kind of echo — useful when a full rhyme would feel too on-the-nose.
+          </p>
+          <!-- Mini result -->
+          <div class="rounded-lg overflow-hidden" style="background:#252525; border: 1px solid rgba(255,255,255,0.06);">
+            <div class="flex justify-between px-3 py-1.5 text-xs" style="color:rgba(255,255,255,0.3); background:#202020; border-bottom:1px solid rgba(255,255,255,0.06);">
+              <span>Assonance for <span style="color:#C084FC;">"alibi"</span></span>
+              <span>25 results</span>
+            </div>
+            <div style="padding: 6px 0;">
+              <div class="sidebar-item"><span>satellite</span><span style="color:rgba(255,255,255,0.25);font-size:10px;font-family:mono;">3 syl</span></div>
+              <div class="sidebar-item"><span>sacrifice</span><span style="color:rgba(255,255,255,0.25);font-size:10px;font-family:mono;">3 syl</span></div>
+              <div class="sidebar-item"><span>satisfied</span><span style="color:rgba(255,255,255,0.25);font-size:10px;font-family:mono;">3 syl</span></div>
+              <div class="sidebar-item" style="color:rgba(255,255,255,0.4);"><span>classified</span><span style="color:rgba(255,255,255,0.2);font-size:10px;font-family:mono;">3 syl</span></div>
+              <div class="sidebar-item" style="color:rgba(255,255,255,0.4);"><span>appetite</span><span style="color:rgba(255,255,255,0.2);font-size:10px;font-family:mono;">3 syl</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Multisyllabic -->
+        <div class="feature-card p-6">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-9 h-9 rounded-lg flex items-center justify-center text-lg"
+                 style="background: rgba(255,193,7,0.1); border: 1px solid rgba(255,193,7,0.2);">≋</div>
+            <div>
+              <div class="font-semibold text-white">Multisyllabic Rhymes</div>
+              <div class="text-xs text-white/40">Multi-syllable endings</div>
+            </div>
+          </div>
+          <p class="text-white/55 text-sm leading-relaxed mb-4">
+            Rhymes that reach back across two or more syllables. Good for longer words where a single-syllable rhyme would feel thin.
+          </p>
+          <!-- Mini result -->
+          <div class="rounded-lg overflow-hidden" style="background:#252525; border: 1px solid rgba(255,255,255,0.06);">
+            <div class="flex justify-between px-3 py-1.5 text-xs" style="color:rgba(255,255,255,0.3); background:#202020; border-bottom:1px solid rgba(255,255,255,0.06);">
+              <span>Multisyllabic for <span style="color:#FFC107;">"beautiful"</span></span>
+              <span>12 results</span>
+            </div>
+            <div style="padding: 6px 0;">
+              <div class="sidebar-item"><span>dutiful</span><span style="color:rgba(255,255,255,0.25);font-size:10px;font-family:mono;">3 syl</span></div>
+              <div class="sidebar-item"><span>bountiful</span><span style="color:rgba(255,255,255,0.25);font-size:10px;font-family:mono;">3 syl</span></div>
+              <div class="sidebar-item"><span>plentiful</span><span style="color:rgba(255,255,255,0.25);font-size:10px;font-family:mono;">3 syl</span></div>
+              <div class="sidebar-item" style="color:rgba(255,255,255,0.4);"><span>merciful</span><span style="color:rgba(255,255,255,0.2);font-size:10px;font-family:mono;">3 syl</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Alliteration -->
+        <div class="feature-card p-6">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-9 h-9 rounded-lg flex items-center justify-center text-lg"
+                 style="background: rgba(76,175,80,0.1); border: 1px solid rgba(76,175,80,0.2);">🔤</div>
+            <div>
+              <div class="font-semibold text-white">Alliteration</div>
+              <div class="text-xs text-white/40">Matching onset consonants</div>
+            </div>
+          </div>
+          <p class="text-white/55 text-sm leading-relaxed mb-4">
+            Words that open with the same consonant cluster, matched phonetically — so "phone" and "fine" count, even though they start with different letters.
+          </p>
+          <!-- Mini result -->
+          <div class="rounded-lg overflow-hidden" style="background:#252525; border: 1px solid rgba(255,255,255,0.06);">
+            <div class="flex justify-between px-3 py-1.5 text-xs" style="color:rgba(255,255,255,0.3); background:#202020; border-bottom:1px solid rgba(255,255,255,0.06);">
+              <span>Alliteration for <span style="color:#4CAF50;">"phone"</span></span>
+              <span>25 results</span>
+            </div>
+            <div style="padding: 6px 0;">
+              <div class="sidebar-item"><span>fine</span><span style="color:rgba(255,255,255,0.25);font-size:10px;font-family:mono;">1 syl</span></div>
+              <div class="sidebar-item"><span>fill</span><span style="color:rgba(255,255,255,0.25);font-size:10px;font-family:mono;">1 syl</span></div>
+              <div class="sidebar-item"><span>follow</span><span style="color:rgba(255,255,255,0.25);font-size:10px;font-family:mono;">2 syl</span></div>
+              <div class="sidebar-item" style="color:rgba(255,255,255,0.4);"><span>phantom</span><span style="color:rgba(255,255,255,0.2);font-size:10px;font-family:mono;">2 syl</span></div>
+              <div class="sidebar-item" style="color:rgba(255,255,255,0.4);"><span>philosophy</span><span style="color:rgba(255,255,255,0.2);font-size:10px;font-family:mono;">4 syl</span></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────────────── SEMANTIC FEATURES ───────────────────────── -->
+  <section id="semantic" class="py-24" style="background: rgba(255,255,255,0.015);">
+    <div class="max-w-6xl mx-auto px-6">
+      <div class="grid md:grid-cols-2 gap-16 items-center">
+
+        <!-- Left: text -->
+        <div>
+          <div class="section-label mb-3">Semantic Tools</div>
+          <h2 class="text-4xl md:text-5xl font-black tracking-tight gradient-text mb-6">
+            Meaning goes<br/>in all directions.
+          </h2>
+          <p class="text-white/50 leading-relaxed mb-8">
+            Synonyms are grouped by part of speech, so you're not handed a noun when you needed a verb. And if a synonym doesn't quite fit, antonyms, hypernyms, and hyponyms help you find the shape of what you actually meant.
+          </p>
+
+          <div class="space-y-4">
+            <div class="flex gap-4">
+              <div class="w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center text-sm"
+                   style="background:rgba(79,195,247,0.1);border:1px solid rgba(79,195,247,0.2);">≈</div>
+              <div>
+                <div class="font-medium text-white text-sm mb-0.5">Synonyms by part of speech</div>
+                <div class="text-white/40 text-sm">Nouns, verbs, adjectives, adverbs — grouped separately so you swap like-for-like.</div>
+              </div>
+            </div>
+            <div class="flex gap-4">
+              <div class="w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center text-sm"
+                   style="background:rgba(239,83,80,0.1);border:1px solid rgba(239,83,80,0.2);">↔</div>
+              <div>
+                <div class="font-medium text-white text-sm mb-0.5">Antonyms</div>
+                <div class="text-white/40 text-sm">The opposite of what you said — useful when you want contrast, tension, or irony.</div>
+              </div>
+            </div>
+            <div class="flex gap-4">
+              <div class="w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center text-sm"
+                   style="background:rgba(192,132,252,0.1);border:1px solid rgba(192,132,252,0.2);">↑</div>
+              <div>
+                <div class="font-medium text-white text-sm mb-0.5">Hypernyms &amp; Hyponyms</div>
+                <div class="text-white/40 text-sm">Move up or down the semantic tree. "Sparrow" → "bird" → "animal". Sometimes the right word is just one level away.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: semantic sidebar mockup -->
+        <div>
+          <div class="rounded-xl overflow-hidden glow-purple" style="background:#1A1A1A; border:1px solid rgba(255,255,255,0.08); max-width:240px; margin:0 auto;">
+            <div class="px-3 pt-3 pb-2.5 border-b border-white/[0.07]">
+              <div class="text-white font-semibold text-sm">dream</div>
+              <div class="text-white/40 text-xs mt-0.5">1 syl · 1 · stressed</div>
+              <div class="font-mono text-xs mt-1" style="color:#C084FC;">D  R  IY1  M</div>
+            </div>
+
+            <div class="px-3 py-2">
+              <div class="sidebar-label">Semantic</div>
+
+              <!-- Synonyms group -->
+              <div class="sidebar-item font-medium" style="color:rgba(255,255,255,0.9);">
+                <span>Synonyms</span><span style="color:#4FC3F7;font-size:10px;">12</span>
+              </div>
+              <div style="padding: 2px 0 4px 8px;">
+                <div class="sidebar-item text-xs" style="color:rgba(255,255,255,0.5);">
+                  <span>Nouns (4)</span><span style="color:rgba(255,255,255,0.2);font-size:9px;">›</span>
+                </div>
+                <!-- Expanded nouns -->
+                <div style="padding: 2px 0 0 8px;">
+                  <div class="sidebar-item text-xs">vision</div>
+                  <div class="sidebar-item text-xs">aspiration</div>
+                  <div class="sidebar-item text-xs">reverie</div>
+                  <div class="sidebar-item text-xs" style="color:rgba(255,255,255,0.45);">fantasy</div>
+                </div>
+                <div class="sidebar-item text-xs mt-1" style="color:rgba(255,255,255,0.5);">
+                  <span>Verbs (3)</span><span style="color:rgba(255,255,255,0.2);font-size:9px;">›</span>
+                </div>
+                <div class="sidebar-item text-xs" style="color:rgba(255,255,255,0.5);">
+                  <span>Adjectives (5)</span><span style="color:rgba(255,255,255,0.2);font-size:9px;">›</span>
+                </div>
+              </div>
+
+              <div class="sidebar-item justify-between mt-1">
+                <span>Antonyms</span><span style="color:#4FC3F7;font-size:10px;">2</span>
+              </div>
+              <div class="sidebar-item justify-between">
+                <span>Hypernyms</span><span style="color:#4FC3F7;font-size:10px;">8</span>
+              </div>
+              <div class="sidebar-item justify-between mb-2">
+                <span>Hyponyms</span><span style="color:#4FC3F7;font-size:10px;">21</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────────────── WRITING TOOLS ───────────────────────── -->
+  <section class="py-24">
+    <div class="max-w-6xl mx-auto px-6">
+      <div class="text-center mb-16">
+        <div class="section-label mb-3">Writing Tools</div>
+        <h2 class="text-4xl font-black tracking-tight gradient-text mb-4">
+          A few other things.
+        </h2>
+        <p class="text-white/40 max-w-xl mx-auto">
+          Little things that make the writing session feel right.
+        </p>
+      </div>
+
+      <div class="grid md:grid-cols-3 gap-5">
+
+        <div class="feature-card p-5">
+          <div class="text-2xl mb-3">#</div>
+          <div class="font-semibold text-white mb-2">Rhyme Scheme Tracker</div>
+          <p class="text-white/45 text-sm leading-relaxed">
+            Put letters (A, B, C…) at the end of each line to keep track of your rhyme scheme while you write. Toggle it on when you want it, off when you don't.
+          </p>
+        </div>
+
+        <div class="feature-card p-5">
+          <div class="text-2xl mb-3">∀</div>
+          <div class="font-semibold text-white mb-2">Word Highlighting</div>
+          <p class="text-white/45 text-sm leading-relaxed">
+            Highlights every occurrence of the word under your cursor across the document. Handy for noticing when you've used the same word four times in a paragraph.
+          </p>
+        </div>
+
+        <div class="feature-card p-5">
+          <div class="text-2xl mb-3">≡</div>
+          <div class="font-semibold text-white mb-2">Syllable Counter</div>
+          <p class="text-white/45 text-sm leading-relaxed">
+            Shows syllable counts in the margin, per line. Nice for meter, haiku, anything where you're counting on your fingers.
+          </p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────────────── PHONETIC INFO STRIP ───────────────────────── -->
+  <section class="py-16" style="background: rgba(255,255,255,0.015);">
+    <div class="max-w-6xl mx-auto px-6">
+      <div class="grid md:grid-cols-2 gap-12 items-center">
+
+        <!-- Phonetic info card -->
+        <div class="rounded-xl overflow-hidden" style="background:#1A1A1A; border:1px solid rgba(255,255,255,0.08);">
+          <div class="px-4 py-3 border-b border-white/[0.07]" style="background:#161616;">
+            <span class="text-white/30 text-xs font-medium uppercase tracking-widest">Word info</span>
+          </div>
+          <div class="p-5 space-y-4">
+            <div>
+              <div class="text-white text-2xl font-bold mb-1">electricity</div>
+              <div class="text-white/40 text-sm">5 syllables · stress: 0-0-1-0-2</div>
+            </div>
+            <div>
+              <div class="text-white/30 text-xs uppercase tracking-widest mb-2">ARPABET</div>
+              <div class="font-mono text-sm" style="color:#4FC3F7; letter-spacing: 0.15em;">
+                IH0 · L · EH1 · K · T · R · IH0 · S · IH0 · T · IY2
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <div class="text-white/30 text-xs uppercase tracking-widest mb-1">Onset</div>
+                <div class="font-mono text-sm text-white/70">IH</div>
+              </div>
+              <div>
+                <div class="text-white/30 text-xs uppercase tracking-widest mb-1">Rhyme key</div>
+                <div class="font-mono text-sm text-white/70">IH-T-IY</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Text -->
+        <div>
+          <div class="section-label mb-3">Phonetic Data</div>
+          <h2 class="text-3xl md:text-4xl font-black tracking-tight gradient-text mb-4">
+            See how words are made.
+          </h2>
+          <p class="text-white/50 leading-relaxed mb-6">
+            For any word you hover or select, Notari shows the full phonetic breakdown — ARPABET transcription, syllable count, stress pattern, rhyme key, vowel sequence. Mostly useful, occasionally just fun to look at.
+          </p>
+          <div class="flex flex-wrap gap-2">
+            <span class="pill">ARPABET</span>
+            <span class="pill">Stress patterns</span>
+            <span class="pill">Syllable count</span>
+            <span class="pill">Rhyme keys</span>
+            <span class="pill">Vowel sequence</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────────────── DOWNLOAD ───────────────────────── -->
+  <section id="download" class="py-32 relative overflow-hidden">
+    <div class="absolute inset-0 pointer-events-none"
+         style="background: radial-gradient(ellipse 70% 50% at 50% 100%, rgba(79,195,247,0.1) 0%, transparent 70%);"></div>
+
+    <div class="max-w-2xl mx-auto px-6 text-center relative">
+      <img src="notari-icon.ico" class="w-16 h-16 mx-auto mb-8 rounded-2xl" alt="Notari" />
+
+      <h2 class="text-4xl md:text-5xl font-black tracking-tight gradient-text mb-4">
+        Give it a try.
+      </h2>
+      <p class="text-white/45 text-lg mb-10">
+        It's free, open source, and self-contained — no .NET install needed.
+        <br/>Windows 10+ (x64).
+      </p>
+
+      <a href="https://github.com/dvhm/notari/releases/latest/download/Notari-Setup.exe"
+         class="inline-flex items-center gap-3 bg-cyan text-bg font-bold px-10 py-4 rounded-xl text-base hover:bg-cyan-light transition-all glow-cyan mb-6">
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M8 1a.75.75 0 0 1 .75.75v6.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06L7.25 8.44V1.75A.75.75 0 0 1 8 1ZM1.5 14.25a.75.75 0 0 1 .75-.75h11.5a.75.75 0 0 1 0 1.5H2.25a.75.75 0 0 1-.75-.75Z"/>
+        </svg>
+        Download for Windows
+      </a>
+
+      <div class="text-white/25 text-sm">
+        GPLv3 licensed · Built with .NET 10 &amp; WPF
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────────────── FOOTER ───────────────────────── -->
+  <footer class="border-t border-white/[0.06] py-10">
+    <div class="max-w-6xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-4 text-white/30 text-sm">
+      <div class="flex items-center gap-2.5">
+        <img src="notari-icon.ico" class="w-6 h-6 rounded-md" alt="Notari" />
+        <span>Notari</span>
+        <span>·</span>
+        <span>GPLv3</span>
+      </div>
+      <div class="flex gap-6">
+        <a href="https://github.com/dvhm/notari" class="hover:text-white/60 transition-colors">GitHub</a>
+        <a href="https://github.com/dvhm/notari/releases/latest/download/Notari-Setup.exe" class="hover:text-white/60 transition-colors">Download</a>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
